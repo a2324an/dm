@@ -3,6 +3,10 @@ import path from "path";
 import express, { Express, Request, Response } from 'express';
 import session from "express-session";
 import morgan from "morgan";
+import WebSocket from "ws";
+import expressWs from "express-ws";
+import * as os from 'node:os';
+
 import showdown from "showdown";
 import configure from "./setup";
 import { createStream } from 'rotating-file-stream';
@@ -15,6 +19,10 @@ import SSHKeyAPI from "./rest/ssh_key";
 import UserAPI from "./rest/user";
 import { PrismaClient } from "@prisma/client";
 import logger from "./logger";
+import cors from "cors";
+
+import * as nodePty from "node-pty";
+
 
 const APP_NAME = "dmb";
 const APP_VERSION = "0.8.0";
@@ -93,14 +101,88 @@ async function main(params: AppParams) {
 
     // CORS
     if (false) {
-        // app.use(cors()); // Cross Origin Resource Sharing
+        app.use(cors()); // Cross Origin Resource Sharing
         // app.use(cors({
         //     origin: 'http://localhost:8080',
         //     credentials: true,
         //     optionsSuccessStatus: 200
         // }));
     }
-      
+
+    //////////////////////////////////////////////////////////////////////////////
+    // WebSocket
+    expressWs(app);
+    {
+        const app_ws = app as any;
+        app_ws.ws('/ws', (ws: WebSocket, req: express.Request, next: express.NextFunction) => {
+            // WebSocket接続が確立されたときの処理
+            ws.binaryType = "arraybuffer";
+            logger.log("Start");
+
+            const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+
+
+            try {
+
+                let pty = nodePty.spawn(shell, [], {
+                    name: 'xterm-color',
+                    cols: 80,
+                    rows: 30,
+                    cwd: process.env.HOME,
+                    env: process.env
+                });
+
+
+                logger.log("Start1");
+                pty.onData((data) => {
+                    // logger.log('WebSocket message(S):', data);
+                    const obj = { event: "term", data: data };
+                    ws.send(JSON.stringify(obj));
+                });
+
+                console.log('WebSocket connected');
+                ws.on('message', (message) => {
+                    try {
+                        if (typeof message === "string") {
+                            const obj = JSON.parse(message);
+                            if (obj.event == "term") {
+                                pty.write(obj.data);
+                            } else if (obj.event == "resize") {
+                                // pty.write(obj.data);
+                                pty.resize(obj.cols, obj.rows);
+                            }
+                        } else {
+                            logger.error("Unknown message type:", typeof message);
+                        }
+                    } catch (e) {
+                        logger.error(e);
+                    }
+                });
+
+                ws.on('close', () => {
+                    // WebSocket接続が閉じられたときの処理
+                    console.log('WebSocket closed');
+                });
+            } catch (e) {
+                logger.error(e);
+
+            }
+
+
+
+
+        });
+    }
+
+
+
+    // const server = new http.Server(app);
+    // const wss = new WebSocket.Server({ server });
+
+    // server.listen(process.env.PORT || 8999, () => {
+    //     console.log(`Server started on port`);
+    //   });
+
 
 
     //////////////////////////////////////////////////////////////////////////////
@@ -202,7 +284,7 @@ async function main(params: AppParams) {
     // Allow proxy access
     app.get('/', context.limiters.CommonLimiter, (req: Request, res: Response) => { res.send(TOP_DOCUMENT) });
     app.all('/v1/common/version', context.limiters.CommonLimiter, async (req: Request, res: Response) => { res.json({ error: null, version: APP_VERSION }); });
-    app.all('/v1/common/heartbeat', context.limiters.CommonLimiter, async (req: Request, res: Response) => { res.json({ error: null, data:{}}); });
+    app.all('/v1/common/heartbeat', context.limiters.CommonLimiter, async (req: Request, res: Response) => { res.json({ error: null, data: {} }); });
 
 
     // Register Rest APIs

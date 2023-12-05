@@ -12,6 +12,21 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Typography from '@mui/material/Typography';
 // import TextBoxWithCopyButton from '../libs/TextBoxWithCopyButton';
 
+import { Terminal } from 'xterm';
+import { FitAddon } from '@xterm/addon-fit';
+// import {SearchAddon} from '@xterm/addon-search';
+import {WebLinksAddon} from '@xterm/addon-web-links';
+// import { Unicode11Addon } from '@xterm/addon-unicode11';
+
+
+const BASE_URL = import.meta.env.BASE_URL;
+const ORIGIN_URL_OBJ = new URL(window.location.origin);
+const WS_PROTOCOL = ORIGIN_URL_OBJ.protocol == "https:" ? "wss:" : "ws:";
+const WS_URL = `${WS_PROTOCOL}//${ORIGIN_URL_OBJ.host}${BASE_URL}api/ws/`;
+console.warn(WS_URL);
+
+
+
 const TEMPLATE_NAME = [
 	'raccoon', 'dog', 'wild_boar',
 	'rabbit', 'cow', 'horse',
@@ -116,6 +131,13 @@ const columns: GridColDef[] = [
 		field: 'status_info',
 		headerName: 'Info',
 		width: 100,
+	},
+];
+
+const initialSortModel = [
+	{
+		field: 'created_at',
+		sort: 'asc',
 	},
 ];
 
@@ -239,7 +261,7 @@ function QuickSearchToolbar() {
 			}}
 		>
 			<GridToolbarQuickFilter
-			sx={{width:"100%", padding:1}}
+				sx={{ width: "100%", padding: 1 }}
 				quickFilterParser={(searchInput: string) =>
 					searchInput
 						.split(',')
@@ -252,12 +274,80 @@ function QuickSearchToolbar() {
 }
 
 
+const fitAddon = new FitAddon();
+const webLinksAddon = new WebLinksAddon();
+// const searchAddon = new SearchAddon();
+// const unicode11Addon = new Unicode11Addon();
+
+window.addEventListener('resize', () => {
+	fitAddon.fit();
+});
+
+function TerminalComponent() {
+	const [socket, setSocket] = useState<WebSocket | null>(null);
+	const [term, setTerm] = useState(new Terminal({
+		fontFamily: "courier-new, courier, monospace",
+		fontWeight: undefined,
+		fontSize: 14,
+		allowProposedApi: true
+	}));
+	const ref = React.useRef<HTMLDivElement>();
+	useEffect(() => {
+		const dom = ref.current;
+		term.onData((data) => {
+			if (socket && socket.readyState === WebSocket.OPEN) {
+				socket.send(JSON.stringify({event:"term", data:data}));
+			}
+		});
+		term.onResize((size) => {
+			if (socket && socket.readyState === WebSocket.OPEN) {
+				socket.send(JSON.stringify({event:"resize", cols:size.cols, rows:size.rows}));
+			}
+		});
+
+		if (!dom) return;
+		if (dom.children.length > 0) return;
+		term.loadAddon(fitAddon);
+		term.loadAddon(webLinksAddon);
+		// term.loadAddon(searchAddon);
+		// term.loadAddon(unicode11Addon);
+		term.open(dom);
+
+		if (socket == null) {
+			const _socket = new WebSocket(WS_URL);
+			_socket.binaryType = "arraybuffer";
+			setSocket(_socket);
+			_socket.onopen = () => {
+				console.info('WebSocket connected');
+				window.dispatchEvent(new Event('resize'));
+			};
+
+			_socket.onmessage = (event) => {
+				const ev = JSON.parse(event.data);
+				if (ev.event == "term") {
+					term.write(ev.data);
+				}
+			};
+
+			_socket.onclose = () => {
+				console.info('WebSocket closed');
+				setSocket(null);
+			};
+		}		
+	}, [socket])
+
+	
+
+	return (<Box sx={{padding:"10px", backgroundColor:"black"}} ref={ref} />);
+}
+
+
 export default function InstancesGrid(prop: any) {
 	const onUpdated = prop.onUpdated;
 
 	const [selection, setSelection] = useState({ row: 0, col: 0 });
 	const [needsUpdate, setNeedsUpdate] = useState(0);
-	const [disable_submit, setDisableSubmit] = useState(false);
+	const [disable_submit, setDisableSubmit] = useState(true);
 	const [selectedRows, setSelectedRows] = useState<Array<any>>([]);
 	const [showConfirmDialog, setConfirmDialogVisibility] = useState(false);
 	const [processing_flag, setProcessingFlag] = useState(false);
@@ -283,6 +373,7 @@ export default function InstancesGrid(prop: any) {
 	const [copied_message, setCopiedMessage] = useState(false);
 
 	const [error_message_of_instance_name, setErrorMessageOfInstanceName] = useState("");
+	const [error_message_of_ssh_port, setErrorMessageOfSSHPort] = useState("");
 
 
 	const [use_ssh, toggleSSH] = useState(true);
@@ -291,15 +382,22 @@ export default function InstancesGrid(prop: any) {
 	const [app_port_list, setAppPortList] = useState<Array<string>>([]);
 	const [instance_name, _setInstanceName] = useState(TEMPLATE_NAME[Math.floor(Math.random() * 1000) % TEMPLATE_NAME.length]);
 	const setInstanceName = (name: string) => {
-		if (name.length == 0 || instance_list.filter((u: any) => u.name == name).length > 0) {
-			setDisableSubmit(true);
+		if (name.length <= 2 || instance_list.filter((u: any) => u.name == name).length > 0 || (name.match(/^[a-z0-9_-]+$/) == null)) {
 			setErrorMessageOfInstanceName("Invalid name.");
 		} else {
-			setDisableSubmit(false);
 			setErrorMessageOfInstanceName("");
 		}
 		_setInstanceName(name);
 	}
+	const updateSubmitButtonForLaunch = () => {
+		if (instance_name.length <= 2 || instance_list.filter((u: any) => u.name == instance_name).length > 0 || (use_ssh && ssh_port == -1) || image_list.filter((u: any) => u.id == image_id).length == 0 || (instance_name.match(/^[a-z0-9_-]+$/) == null)) {
+			if (disable_submit == false) setDisableSubmit(true);
+		} else {
+			if (disable_submit == true) setDisableSubmit(false);
+		}
+	}
+	updateSubmitButtonForLaunch();
+
 	const [accelerator, setAccelerator] = useState("cpu");
 
 	const [buttonName, setButtonName] = useState("");
@@ -338,6 +436,7 @@ export default function InstancesGrid(prop: any) {
 		setOperationError("");
 		setErrorMessage("");
 		setErrorMessageOfInstanceName("");
+		setErrorMessageOfSSHPort("");
 		setSomethingError("");
 	}
 
@@ -414,7 +513,7 @@ export default function InstancesGrid(prop: any) {
 					memory_h: u.memory == -1 ? "host" : U.human_file_size_M(u.memory),
 					storage_h: u.storage == -1 ? "host" : `${U.human_file_size_M(u.storage)}/${U.human_file_size_M(u.total_storage)}`,
 				}));
-				console.log(data);
+				console.log("Instances:",data);
 				setInstanceList(data);
 			} else {
 				console.error(ret.error);
@@ -427,74 +526,87 @@ export default function InstancesGrid(prop: any) {
 		<Box sx={{ width: '100%', marginBottom: 10 }}>
 			{something_error.length > 0 ? <Alert sx={{ marginBottom: 1 }} severity="error">{something_error}</Alert> : <></>}
 
+			{/* <TerminalComponent /> */}
+
 			<h1>Instances</h1>
-			<Box sx={{ height: 400 }}>
 
-				<DataGrid
-					rows={instance_list}
-					columns={columns}
-					initialState={{
-						pagination: {
-							paginationModel: {
-								pageSize: 100,
-							},
+			<DataGrid
+
+				rows={instance_list}
+				columns={columns}
+				initialState={{
+					sorting: {
+						sortModel: [{ field: 'created_at', sort: 'desc' }],
+					},
+					pagination: {
+						paginationModel: {
+							pageSize: 100,
 						},
-					}}
-					slots={{ toolbar: QuickSearchToolbar }}
+					},
+				}}
+				slots={{ toolbar: QuickSearchToolbar }}
 
-					pageSizeOptions={[100]}
-					checkboxSelection
-					disableRowSelectionOnClick
+				pageSizeOptions={[100]}
+				checkboxSelection
+				disableRowSelectionOnClick
 
-					onRowClick={(event: any) => {
-						const instance_id = event.id;
-						if (instance_id) {
-							const instance = instance_list.find((u: any) => u.id == instance_id);
-							if (instance) {
-								setSSHTabInstanceName(instance.name);
-								setSSHTabAddress(instance.ipv4);
-								port_map_list.forEach((p: any) => {
-									if (p.instance_id == instance.id) {
-										setSSHTabPort(p.port);
-									}
-								});
-								setSSHTabKeyName(instance.ssh_key_name);
-								setSelectedInstance(instance);
-							} else {
-								setSelectedInstance(null);
-							}
+				onRowClick={(event: any) => {
+					const instance_id = event.id;
+					if (instance_id) {
+						const instance = instance_list.find((u: any) => u.id == instance_id);
+						if (instance) {
+							setSSHTabInstanceName(instance.name);
+							setSSHTabAddress(instance.ipv4);
+							port_map_list.forEach((p: any) => {
+								if (p.instance_id == instance.id) {
+									setSSHTabPort(p.port);
+								}
+							});
+							setSSHTabKeyName(instance.ssh_key_name);
+							setSelectedInstance(instance);
 						} else {
 							setSelectedInstance(null);
 						}
+					} else {
+						setSelectedInstance(null);
+					}
+					for (const instance of instance_list) {
+						instance.selected_as_single = false;
+					}
+					event.row.selected_as_single = true;
+				}}
 
-					}}
+				sx={{
+					maxHeight: 600, minHeight: 200,
 
-					sx={{
-						'& .rows-managed': {
-							background: '#77777722 !important'
-						},
-						'& .rows-unmanaged': {
-							opacity: 0.25
-							// background: '#2C7CFF33 !important'
-						}
-					}}
-					getRowClassName={(params: any) => {
-						const row = params.row;
-						if (row.managed_sym == "Y") {
-							return 'rows-managed'
-						}
-						return 'rows-unmanaged'
-					}}
+					'& .rows-managed': {
+						// background: '#77777722 !important'
+					},
+					'& .rows-selected': {
+						background: '#3300FF22 !important'
+					},
+					'& .rows-unmanaged': {
+						opacity: 0.25
+						// background: '#2C7CFF33 !important'
+					}
+				}}
+				getRowClassName={(params: any) => {
+					const row = params.row;
+					const s_class = row.selected_as_single ? 'rows-selected' : '';
+					if (row.managed_sym == "Y") {
+						return ['rows-managed', s_class].filter((s: string) => s.length > 0).join(" ");
+					}
+					return ['rows-unmanaged', s_class].filter((s: string) => s.length > 0).join(" ");
+				}}
 
-					onRowSelectionModelChange={(selectedRows: any) => {
-						setSelectedRows(selectedRows);
-						console.log(selectedRows);
-					}}
-				/>
-			</Box>
+				onRowSelectionModelChange={(selectedRows: any) => {
+					setSelectedRows(selectedRows);
+					console.log(selectedRows);
+				}}
+			/>
 
 			{operation_error.length > 0 ? <Alert sx={{ marginBottom: 1, marginTop: 1 }} severity="error">{operation_error}</Alert> : <></>}
-			<Box sx={{ width: '100%', marginTop: 2, textAlign: "right" }}>
+			<Box sx={{ width: '100%', marginTop: 2, textAlign: processing_flag ? "center" : "right" }}>
 				{processing_flag ? <CircularProgress /> : <>
 					<Button sx={{ width: "20%", marginLeft: 1 }} variant="contained" onClick={() => {
 						setButtonName("start");
@@ -522,8 +634,9 @@ export default function InstancesGrid(prop: any) {
 			<Box sx={{ width: '100%', marginTop: 2, boxShadow: "0px 0px 2px black" }}>
 				<Tabs onChange={(event: React.SyntheticEvent, newValue: number) => changeTab(newValue)} value={tab}>
 					<Tab label="Launch" />
-					<Tab label="SSH" />
-					<Tab label="Status" />
+					<Tab label="SSH" disabled={selected_instance==null} />
+					<Tab label="Status" disabled={selected_instance==null} />
+					<Tab label="Terminal" disabled={selected_instance==null} />
 				</Tabs>
 			</Box>
 
@@ -653,8 +766,8 @@ export default function InstancesGrid(prop: any) {
 												</>}
 
 												<TextField label="SSH port" variant="outlined" sx={{ marginBottom: 2, marginTop: 2, width: "100%" }}
-													error={!!error_message_of_instance_name}
-													helperText={error_message_of_instance_name}
+													error={!!error_message_of_ssh_port}
+													helperText={error_message_of_ssh_port}
 													value={ssh_port} onChange={(event: any) => { }}
 													disabled />
 
@@ -895,6 +1008,29 @@ export default function InstancesGrid(prop: any) {
 					</Card>
 				</Box>
 			</> : ""}
+
+			{tab == 3 ? <>
+				<Box sx={{ boxShadow: "0px 0px 2px black" }}>
+					{/* <TerminalComponent /> */}
+					{/* <Card>
+						<CardContent>
+							<Paper sx={{
+								marginTop: 2,
+								padding: 2,
+								width: '100%',
+								backgroundColor: '#222',
+								overflow: 'auto',
+								color: '#AAA',
+								whiteSpace: 'pre-wrap',
+								boxShadow: "0px 0px 2px black",
+							}}>
+								<TerminalComponent/>
+							</Paper>
+						</CardContent>
+					</Card> */}
+				</Box>
+			</> : ""}
+
 
 			<ConfirmDialog open={showConfirmDialog} setOpen={setConfirmDialogVisibility} onSubmit={(flag: boolean) => {
 				clear_error_messages();

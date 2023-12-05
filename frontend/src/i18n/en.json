@@ -1,5 +1,5 @@
 {
-	"app_name": "Hacoryoshka",
+	"app_name": "DM",
 	"common": {
 		"signin": "Sign in",
 		"signup": "Sign up",
@@ -14,6 +14,7 @@
 		"password": "Password",
 		"new_password": "New password",
 		"confirm_password": "Confirm password",
+		"old_password": "Old password",
 		"language": "Language",
 		"messages": "Messages",
 		"notifications": "Notifications",
@@ -45,6 +46,7 @@
 	},
 	"left_menu": {
 		"ssh_keys": "SSH keys",
+		"api_keys": "API Keys",
 		"images": "Images",
 		"instances": "Instances",
 		"compute_nodes": "Nodes",

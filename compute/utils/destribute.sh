@@ -1,58 +1,77 @@
 #!/bin/bash
 
-# TARGET=win
-# scp bin/compute-linux $TARGET:~/bin/compute
-# TARGET=min scp bin/compute-linux $TARGET:~/bin/compute
-# TARGET=nic
-# scp bin/compute-linux $TARGET:~/bin/compute
-# TARGET=st
-# scp bin/compute-linux $TARGET:~/bin/compute
-# ssh $TARGET "cd ~/bin; ./compute"
+# This setting for distribution in personal.
 
+export XZ_OPT=-9
 
+arch=$(uname -m)
 
-SESSION=dstdm
+if [ "$arch" = "armv7l" ]; then
+    echo "Not support armv7l"
+elif [ "$arch" = "x86_64" ]; then
 
-cp -f bin/compute-linux ~/datas/bin/linux/compute
-cp -f bin/compute-macos ~/datas/bin/macos/compute
-cp -f src/template.config.json ~/datas/bin/linux/compute.template_config.json
-cp -f src/template.config.json ~/datas/bin/macos/compute.template_config.json
+    echo "Build...."
+    npm run build
+    echo "Copy...."
+    cp -f bin/compute-linux ~/datas/bin/linux-x64/compute
+    # cp -f bin/compute-macos ~/datas/bin/macos-x64/compute
+    cp -f src/tiny.config.json ~/datas/bin/linux-x64/compute.template_config.json
+    cp -f src/tiny.config.json ~/datas/bin/macos-x64/compute.template_config.json
+    echo "Compress...."
+    tar -cJf ~/datas/bin/linux-x64/compute.tar.xz -C ~/datas/bin/linux-x64 compute
+    # tar -cJf ~/datas/bin/macos-x64/compute.tar.xz -C ~/datas/bin/macos-x64 compute
+    echo "Done."
 
-# npm run build
-TARGET=win
-ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
-scp bin/compute-linux $TARGET:~/bin/compute
-TARGET=st
-ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
-scp bin/compute-linux $TARGET:~/bin/compute
-TARGET=nic
-ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
-scp bin/compute-linux $TARGET:~/bin/compute
+elif [ "$arch" = "arm64" ]; then
 
+    npm run build_arm
 
-# TARGET=jetson
-# ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
-# scp bin/compute-linux-arm64 $TARGET:~/bin/compute
+    system_name=$(uname -s)
 
-# echo "kill"
+    if [ "$system_name" = "Linux" ]; then
 
-# tmux kill-session -t $SESSION
+        cp -f src/tiny.config.json ~/datas/bin/linux-arm64/compute.template_config.json
+        cp -f bin/compute ~/datas/bin/linux-arm64/compute
+        tar -cJf ~/datas/bin/linux-arm64/compute.tar.xz -C ~/datas/bin/linux-arm64 compute
 
-# echo "new session"
+    elif [ "$system_name" = "Darwin" ]; then
 
-# tmux new -t $SESSION\; \
-# split-window -v \; \
-# select-pane -t 0\; \
-# split-window -v \; \
-# select-pane -t 1\; \
-# split-window -v \; \
-# select-pane -t 2\; \
-# send-keys -t 0 "ssh win 'killall compute ; ~/bin/compute'" C-m\; \
-# send-keys -t 1 "ssh st 'killall compute ; ~/bin/compute'" C-m\; \
-# send-keys -t 2 "./c" C-m\; \
+        cp -f src/tiny.config.json ~/datas/bin/macos-arm64/compute.template_config.json
+        cp -f bin/compute ~/datas/bin/macos-arm64/compute
+        tar -cJf ~/datas/bin/macos-arm64/compute.tar.xz -C ~/datas/bin/macos-arm64 compute
 
-echo "done"
+    else
+        echo "Other system: $system_name"
+    fi
 
-# # firefox http://localhost:4050/ &
-# # firefox http://localhost:5555/ &
+else
+    echo "Other arch: $arch"
+fi
 
+host_name=$(hostname)
+
+if [ "$host_name" = "min" ]; then
+    # MIN Server
+    cp -f utils/installer.sh ~/datas/bin/installer/dmc.sh
+
+    TARGET=st
+    echo "Copy to $TARGET"
+    ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
+    scp bin/compute-linux $TARGET:~/bin/compute
+    echo "Done."
+
+    TARGET=win
+    echo "Copy to $TARGET"
+    ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
+    scp bin/compute-linux $TARGET:~/bin/compute
+    echo "Done."
+
+elif [ "$host_name" = "jetson" ]; then
+    # Jetson
+    TARGET=jetson
+    echo "Copy to $TARGET"
+    ssh $TARGET "mkdir -p ~/bin;rm ~/bin/compute"
+    scp bin/compute $TARGET:~/bin/compute
+    echo "Done."
+
+fi

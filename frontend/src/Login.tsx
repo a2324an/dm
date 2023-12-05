@@ -112,9 +112,9 @@ export default function SignIn({ onClosed, show, onClickedForgetPassword, onClic
         }, 3000);
       }
       await U.sleep(1000);
-    } catch (e) {
+    } catch (e: any) {
       await U.sleep(1000);
-      error_message = 'Server Error';
+      error_message = 'Server Error:' + e.toString();
       console.error(e);
     }
     setAccessState(0);
@@ -161,26 +161,26 @@ export default function SignIn({ onClosed, show, onClickedForgetPassword, onClic
             })()}
             <Button type='submit' fullWidth variant='contained' sx={{ mt: 3, mb: 2, height: 50 }} disabled={login_button_state}>
               <Box sx={{ display: access_state == 0 ? 'none' : 'flex' }}>
-                <CircularProgress />
+                <CircularProgress size="1.5rem"/>
               </Box>
               {access_state == 0 ? T('common.signin') : ''}
             </Button>
-            <Grid container>
+            <Grid container sx={{mt:2}}>
               <Grid item xs>
                 <Link href='#' variant='body2' onClick={() => { onClickedForgetPassword() }}>
                   <s>{T('login.forget_password')}</s>
                 </Link>
               </Grid>
               <Grid item>
-                <Link href='#' variant='body2' onClick={() => { onClickedSignUp() }}>
+                {/* <Link href='#' variant='body2' onClick={() => { onClickedSignUp() }}>
                   <s>{T('login.dont_have_an_account')}</s>
-                </Link>
+                </Link> */}
               </Grid>
             </Grid>
           </Box>
         </Box>
         <Stack sx={{ mt: 8, mb: 2 }}>
-          <Copyright />
+          {/* <Copyright /> */}
         </Stack>
       </Container>
     </>

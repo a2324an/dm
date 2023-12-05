@@ -117,7 +117,7 @@ export default async (context: MainContext) => {
         const user_id = session.user.user_id;
 
         if (containsInvalidChars(instance_name)) return res.json({ error: "Invalid instance name. [YX6UazOrzp]" });
-        if (instance_name.length < 2) return res.json({ error: "Instance name is too short. [uCFggvuXSZ]" });
+        if (instance_name.length <= 2) return res.json({ error: "Instance name is too short. [uCFggvuXSZ]" });
         if (instance_name.length > 32) return res.json({ error: "Instance name is too long. [1lYQNzrN8B]" });
         let instance;
         let should_delete = false;
@@ -400,7 +400,6 @@ export default async (context: MainContext) => {
             const client = NodeTable.get(node_id);
             if (client == null) {
                 if (force) {
-                    logger.log(await ORM.port_map.deleteMany({ where: { instance_id: instance.id } }))
                     logger.log(await ORM.managed_instance.deleteMany({ where: { instance_id: instance.id } }))
                     logger.log(await ORM.instance.delete({ where: { id: instance.id } }));
                     return res.json({ error: null, data: {} });
